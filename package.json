@@ -1,0 +1,30 @@
+{
+  "name": "node-red-contrib-validator",
+  "version": "1.0.0",
+  "description": "Validator it is a node to validate json objects in node-red",
+  "main": "validator.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://bitbucket.org/rgobbo/node-red-contrib-validator"
+  },
+  "keywords": [
+    "node-red",
+    "Json validator",
+    "Validation",
+    "Validator"    
+  ],
+  "node-red": {
+    "nodes": {
+      "node-red-contrib-validator": "validator.js"
+    }
+  },
+  "author": "Ricardo Gobbo",
+  "license": "MIT",
+  "homepage": "https://bitbucket.org/rgobbo/node-red-contrib-validator#readme",
+  "dependencies": {
+    "node-input-validator": "^3.5.0"
+  }
+}

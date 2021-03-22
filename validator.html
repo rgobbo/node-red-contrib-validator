@@ -1,0 +1,552 @@
+
+<script type="text/x-red" data-template-name="validator">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> <span data-i18n="common.label.name"></span></label>
+        <input type="text" id="node-input-name" data-i18n="[placeholder]common.label.name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-property"><i class="fa fa-address-card"></i> Property</label>
+        <input type="text" id="node-input-property" style="width: 70%"/>        
+    </div>
+    <div class="form-row">
+            <label for="node-input-schema"><i class="fa fa-list-ol"></i> Schema</label>
+            <input type="text" id="node-input-schema" style="width: 70%" placeholder="if empty use properties panel"/>        
+    </div>
+    <div class="form-row node-input-rule-container-row">
+        <ol id="node-input-rule-container"></ol>
+    </div>
+</script>
+
+<script type="text/javascript">
+(function() {
+    var validators = [
+        {v:"required",t:"",kind:'S'},
+        {v:"requiredIf",t:"input",placeholder:'field,value',kind:'O'},
+        {v:"requiredNotIf",t:"input",kind:'O'},
+        {v:"requiredWith",t:"input",kind:'O'},
+        {v:"requiredWithout",t:"input",kind:'O'},
+        {v:"accepted",t:"",kind:'B'},
+        {v:"alpha",t:"",kind:'S'},
+        {v:"after",t:"input",placeholder:'YYYY-MM-DD',kind:'D'},
+        {v:"alphaDash",t:"",kind:'S'},
+        {v:"alphaNumeric",t:"",kind:'S'},
+        {v:"array",t:"",kind:'O'},
+        {v:"arrayUnique",t:"",kind:'O'},
+        {v:"arrayUniqueObjects",t:"",kind:'O'},
+        {v:"ascii",t:"",kind:'S'},
+        {v:"base64",t:"",kind:'S'},
+        {v:"between",t:"input",placeholder:'min,max',kind:'N'},
+        {v:"boolean",t:"",kind:'B'},
+        {v:"contains",t:"input",placeholder:'value',kind:'S'},
+        {v:"creditCard",t:"",kind:'S'},
+        {v:"date",t:"",kind:'D'},
+        {v:"dateAfterToday",t:"input",placeholder:'number,unit Ex:2,days',kind:'D'},
+        {v:"dateBeforeToday",t:"input",placeholder:'number,unit Ex:2,days',kind:'D'},
+        {v:"dateFormat",t:"input",placeholder:'format Ex:YYYY-MM-DD',kind:'D'},
+        {v:"decimal",t:"",kind:'N'},
+        {v:"digits",t:"input",placeholder:'length',kind:'N'},
+        {v:"digitsBetween",t:"input",placeholder:'min,max',kind:'N'},
+        {v:"domain",t:"",kind:'S'},
+        {v:"email",t:"",kind:'S'},
+        {v:"equals",t:"input",placeholder:'value',kind:'O'},
+        {v:"gt",t:"input",placeholder:'another_field',kind:'O'},
+        {v:"gte",t:"input",placeholder:'another_field',kind:'O'},
+        {v:"hash",t:"input",placeholder:'algo ex:sha1',kind:'S'},
+        {v:"hex",t:"",kind:'S'},
+        {v:"hexColor",t:"",kind:'S'},
+        {v:"in",t:"input",placeholder:'a,b...n ex:active,inactive',kind:'S'},
+        {v:"integer",t:"",kind:'N'},
+        {v:"ip",t:"",kind:'S'},
+        {v:"iso8601",t:"",kind:'O'},
+        {v:"json",t:"",kind:'O'},
+        {v:"length",t:"input",placeholder:'max,min',kind:'S'},
+        {v:"latLong",t:"",kind:'S'},        
+        {v:"lengthBetween",t:"input",placeholder:'max,min',kind:'N'},
+        {v:"lt",t:"input",placeholder:'another_field',kind:'O'},
+        {v:"lte",t:"input",placeholder:'another_field',kind:'O'},
+        {v:"macAddress",t:"",kind:'S'},
+        {v:"max",t:"input",placeholder:'value Ex:10',kind:'N'},
+        {v:"maxLength",t:"input",placeholder:'value Ex:10',kind:'S'},
+        {v:"mime",t:"",kind:'O'},
+        {v:"min",t:"input",placeholder:'value',kind:'N'},
+        {v:"minLength",t:"input",placeholder:'value',kind:'S'},
+        {v:"mongoId",t:"",kind:'S'},
+        {v:"notContains",t:"input",placeholder:'value',kind:'S'},
+        {v:"notIn",t:"input",placeholder:'a,b...n ex:active,inactive',kind:'S'},
+        {v:"nullable",t:"",kind:'O'},
+        {v:"numeric",t:"",kind:'N'},
+        {v:"phoneNumber",t:"",kind:'S'},
+        {v:"regex",t:"input",kind:'S'},
+        {v:"same",t:"input",placeholder:'field',kind:'S'},
+        {v:"size",t:"input",placeholder:'max size:max,min ex:4kb', kind:'S'},
+        {v:"sometimes",t:"",kind:'S'},
+        {v:"string",t:"",kind:'S'},
+        {v:"url",t:"",kind:'S'}
+    ];
+    function clipValueLength(v) {
+        if (v.length > 15) {
+            return v.substring(0,15)+"...";
+        }
+        return v;
+    }
+    function prop2name(key) {
+        var result = RED.utils.parseContextKey(key);
+        return result.key;
+    }
+    function getValueLabel(t,v) {
+        if (t === 'str') {
+            return '"'+clipValueLength(v)+'"';
+        } else if (t === 'msg') {
+            return t+"."+clipValueLength(v);
+        } else if (t === 'flow' || t === 'global') {
+            return t+"."+clipValueLength(prop2name(v));
+        }
+        return clipValueLength(v);
+    }
+    RED.nodes.registerType('validator', {
+        color: "#FFCC00",
+        category: 'Application',
+        defaults: {
+            name: {value:""},
+            property: {value:"payload", required:true, validate: RED.validators.typedInput("propertyType")},
+            propertyType: { value:"msg" },
+            schema:  {value:""},
+            schemaType : { value:"global" },
+            rules: {value:[{t:"", rule:"required", vt:""}]}            
+        },
+        inputs: 1,
+        outputs: 2,
+        outputLabels: ["On error", "Validated"],
+      
+        icon: "validator.png",
+        label: function() {
+            return this.name||this._("Validator");
+        },
+        labelStyle: function() {
+            return this.name?"node_label_italic":"";
+        },
+        oneditprepare: function() {
+            var node = this;
+            var previousValueType = {value:"prev",label:this._("inject.previous"),hasValue:false};
+            $("#node-input-property").typedInput({default:this.propertyType||'msg',types:['msg','flow','global','jsonata']});
+            $("#node-input-schema").typedInput({default:this.schemaType||'global',types:['msg','flow','global']});
+        
+            function resizeRule(rule) {
+                var newWidth = rule.width();
+                var selectField = rule.find("select");
+                var type = selectField.val()||"";
+                var valueField = rule.find(".node-input-rule-value");
+                var typeField = rule.find(".node-input-rule-type-value");
+                var numField = rule.find(".node-input-rule-num-value");
+                var expField = rule.find(".node-input-rule-exp-value");
+                var btwnField1 = rule.find(".node-input-rule-btwn-value");
+                var btwnField2 = rule.find(".node-input-rule-btwn-value2");
+                var selectWidth;
+                if (type.length < 4) {
+                    selectWidth = 60;
+                } else if (type === "regex") {
+                    selectWidth = 147;
+                } else {
+                    selectWidth = 120;
+                }
+                selectField.width(selectWidth);
+                if ((type === "btwn") || (type === "index")) {
+                    btwnField1.typedInput("width",(newWidth-selectWidth-70));
+                    btwnField2.typedInput("width",(newWidth-selectWidth-70));
+                } else if ((type === "head") || (type === "tail")) {
+                    numField.typedInput("width",(newWidth-selectWidth-70));
+                } else if (type === "jsonata_exp") {
+                    expField.typedInput("width",(newWidth-selectWidth-70));
+                } else if (type === "istype") {
+                    typeField.typedInput("width",(newWidth-selectWidth-70));
+                } else {
+                    if (type === "true" || type === "false" || type === "null" || type === "nnull" || type === "empty" || type === "nempty" || type === "else") {
+                        // valueField.hide();
+                    } else {
+                        valueField.typedInput("width",(newWidth-selectWidth-70));
+                    }
+                }
+            }
+            $("#node-input-rule-container").css('min-height','370px').css('min-width','450px').editableList({
+                addItem: function(container,i,opt) {
+                     if (!opt.hasOwnProperty('r')) {
+                         opt.r = {};
+                     }
+                     var rule = opt.r;
+                    // if (!rule.hasOwnProperty('t')) {
+                    //     rule.t = 'eq';
+                    // }
+                    // if (!opt.hasOwnProperty('i')) {
+                    //     opt._i = Math.floor((0x99999-0x10000)*Math.random()).toString();
+                    // }
+                    container.css({
+                        overflow: 'hidden',
+                        whiteSpace: 'nowrap'
+                    });
+                    var row = $('<div/>').appendTo(container);
+                    var row2 = $('<div/>',{style:"padding-top: 5px; width:100%;"}).appendTo(container);
+                   // var row3 = $('<div/>',{style:"padding-top: 5px; padding-left: 102px;"}).appendTo(container);
+                    var valueField = $('<input/>',{class:"node-input-rule-value",type:"text",style:"margin-left: 5px;width:140px;",placeholder: 'Object property'} ).appendTo(row);
+                    
+                    valueField.val(rule.field);
+                   
+                    var selectField = $('<select/>',{style:"width:120px; margin-left: 5px; text-align: center;",placeholder:'Rule'}).appendTo(row);
+                    var group0 = $('<optgroup/>', { label: "String rules" }).appendTo(selectField);
+                    for (var d in validators) {
+                        if(validators[d].kind === 'S') {
+                            group0.append($("<option></option>").val(validators[d].v).text(validators[d].v));
+                        }
+                    }
+                    var group1 = $('<optgroup/>', { label: "Date rules" }).appendTo(selectField);
+                    for (var d in validators) {
+                        if(validators[d].kind === 'D') {
+                            group1.append($("<option></option>").val(validators[d].v).text(validators[d].v));
+                        }
+                    }
+                    var group2 = $('<optgroup/>', { label: "Number rules" }).appendTo(selectField);
+                    for (var d in validators) {
+                        if(validators[d].kind === 'N') {
+                            group2.append($("<option></option>").val(validators[d].v).text(validators[d].v));
+                        }
+                    }
+                    var group3 = $('<optgroup/>', { label: "Boolean rules" }).appendTo(selectField);
+                    for (var d in validators) {
+                        if(validators[d].kind === 'B') {
+                            group3.append($("<option></option>").val(validators[d].v).text(validators[d].v));
+                        }
+                    }
+                    for (var d in validators) {
+                        if(validators[d].kind === 'O') {
+                            selectField.append($("<option></option>").val(validators[d].v).text(validators[d].v));
+                        }
+                    }                                        
+                    var valueMessage = $('<input/>',{class:"node-input-msg-value",type:"text",style:"margin-left: 5px;width:98%;",placeholder: 'Custom message'} ).appendTo(row2);
+                    valueMessage.val(rule.message);
+                    
+
+                    selectField.change(function() {
+//                         resizeRule(container);
+                        var type = selectField.val();
+                        var selRule = {t:''};
+                        for (var i in validators) {
+                            if(validators[i].v === type) {
+                                selRule = validators[i];
+                                break;
+                            }
+                        }   
+                   
+                        var value2 = row.find(".node-input-rule-value2").val();  
+                        if (value2 !== undefined){
+                            row.children(".node-input-rule-value2").remove();
+                        }
+
+                        if (selRule.t === "input")  {                            
+                            var valueField2 = $('<input/>',{class:"node-input-rule-value2",type:"text",style:"margin-left: 5px; width:110px;",placeholder: selRule.placeholder}).appendTo(row);
+                            if (rule.value !== "undefined") {
+                                valueField2.val(rule.value);
+                            }
+                         }
+                     });
+                       if (rule.rule !== undefined) {
+                            selectField.val(rule.rule);
+                        }                        
+
+                    selectField.change();
+                },
+                resizeItem: resizeRule,
+                sortable: true,
+                removable: true
+            });
+             for (var i=0;i<this.rules.length;i++) {
+                 var rule = this.rules[i];
+                 
+                 $("#node-input-rule-container").editableList('addItem',{r:rule,i:i});
+             }
+        },
+        oneditsave: function() {
+            var rules = $("#node-input-rule-container").editableList('items');
+            var ruleset;
+            var node = this;
+            node.rules = [];
+           // console.log(rules.length);
+            rules.each(function(i) {                
+                var rule = $(this);
+                
+                var type = rule.find("select").val();
+                var inputValue = rule.find(".node-input-rule-value").val();  
+                var inputValue2 = rule.find(".node-input-rule-value2").val();                           
+                var customMessage = rule.find(".node-input-msg-value").val();
+                
+                var r = {rule:type, field: inputValue, value:inputValue2, message: customMessage};
+                
+                // console.log("!=" + type);
+                // if (type === "length") {
+                //     r.iv2 = rule.find(".node-input-rule-value2").val();    
+                // }
+                node.rules.push(r);
+            });
+            this.propertyType = $("#node-input-property").typedInput('type');
+            this.schemaType = $("#node-input-schema").typedInput('type');
+        },
+        oneditresize: function(size) {
+            // var rows = $("#dialog-form>div:not(.node-input-rule-container-row)");
+            // var height = size.height;
+            // for (var i=0;i<rows.size();i++) {
+            //     height -= $(rows[i]).outerHeight(true);
+            // }
+            // var editorRow = $("#dialog-form>div.node-input-rule-container-row");
+            // height -= (parseInt(editorRow.css("marginTop"))+parseInt(editorRow.css("marginBottom")));
+            // $("#node-input-rule-container").editableList('height',height);
+        }
+    });
+})();
+</script>
+
+<!-- Next, some simple help text is provided for the node.                   -->
+<script type="text/x-red" data-help-name="validator">
+
+    <h3>Usage</h3>
+    <p>Validate json object using defined rules, based on node-input-validator</p>
+<p>You can define the property where the json is stored, like msg.payload. The return will be two output nodes.
+The first node is lauched on error, the object error is in msg.error and there are other custom error returned in msg.payload. 
+The second node on validate return the msg.payload.
+</p>
+    <h3>Rules</h3>
+
+<p><b>required</b><br/>
+The field under validation cannot be left blank.</p>
+
+<p><b>requiredIf:field,value</b><br/>
+The field under validation cannot be left blank, if provided seed value equals to provided value seed.<p>
+
+<p><b>requiredNotIf:field,value</b><br/>
+The field under validation may left blank, if provided seed value equals to provided value seed.</p>
+
+<p><b>requiredWith:field</b><br/>
+The field under validation may required in case provided seed present.</p>
+
+<p><b>requiredWithout:field</b><br/>
+requiredWithout:field,field,field <br/>
+The field under validation may left blank in case provided seed present. <br/>
+
+Example: {email:'requiredWithout:phone,pan', username:'requiredWithout:email'}
+</p>
+
+<p><b>accepted</b><br/>
+The field under validation must be yes, on, 1, or true.</p>
+
+<p><b>after:YYYY-MM-DD</b><br/>
+The field under validation must be date after provided seed.</p>
+
+<p><b>alpha</b><br/>
+The field under validation must be entirely alphabetic characters. </p>
+
+<p><b>alphaDash</b><br/>
+The field under validation may have alpha-numeric characters, as well as dashes and underscores. </p>
+
+<p><b>alphaNumeric</b><br/>
+The field under validation only contains letters and numbers.</p>
+
+<p><b>array</b><br/>
+The field under validation must be an array.</p>
+
+<p><b>arrayUnique</b><br/>
+The field under validation must be an array and must contains unique values. No need to use array rule. This rule will take care of that.</p>
+
+<p><b>arrayUniqueObjects:attributes</b><br/>
+The field under validation must be an array and should have objects with unique attributes as per seed. No need to use array rule. This rule will take care of that.</p>
+
+<p><b>ascii</b><br/>
+The field under validation only contains ascii characters.</p>
+
+<p><b>base64</b><br/>
+The field under validation must be valid base64 encoded string.</p>
+
+<p><b>between:min,max</b><br/>
+The field under validation must be betwwen min and max seed. This will work with number valus as well as with arrays using array count.</p>
+
+<p><b>boolean</b><br/>
+boolean:custom The field under validation must be boolean (true, false, 'true', 'false', 0, 1, '0', '1') or in custom seed.</p>
+
+<p><b>contains:value</b><br/>
+The field under validation must contains provided seeds.</p>
+
+<p><b>creditCard</b><br/>
+The field under validation must be valid credit card string.</p>
+
+<p><b>date</b><br/>
+The field under validation must be a valid date (YYYY-MM-DD).</p>
+
+<p><b>dateAfterToday:number,unit</b><br/>
+The field under validation must be a valid date after provided seed.<br/>
+<i>Example: dateAfterToday:2,days</i> <br/>
+see moment docs(https://momentjs.com/docs/#/manipulating/add/) for supported units.</p>
+
+<p><b>dateBeforeToday:number,unit</b><br/>
+The field under validation must be a valid date before provided seed.<br/>
+
+Example: {valid:'required|dateBeforeToday:2,months'}</p>
+
+
+<p><b>dateFormat:format</b><br/>
+The field under validation must match the given date format.<br/>
+
+Note: use array of rules style declaration to deal with colon (:) in time formats.<br/>
+
+Example:  {dob:'required|dateFormat:YYYY-MM-DD'}<br/>
+Check https://momentjs.com/docs/ for supported formats</p>
+
+<p><b>decimal</b><br/>
+The field under validation must be a decimal value.</p>
+
+<p><b>digits:length</b><br/>
+The field under validation must be numeric and must have an exact length.</p>
+
+<p><b>digitsBetween:min,max</b><br/>
+The field under validation must have a length between provided min and max values.
+
+Example: {age:'required|digitsBetween:10,13'} </p>
+
+<p><b>domain</b><br/>
+The field under validation must a qualified domain.</p>
+
+<p><b>email</b><br/>
+The field under validation must be formatted as an e-mail address.>/p>
+
+<p><b>equals</b><br/>
+The field under validation must be equal to given value.</p>
+
+<p><b>gt:another_field</b><br/>
+The field under validation must be greater then another field value. This rule is for Numbers comparision.</p>
+
+<p><b>gte:another_field</b><br/>
+The field under validation must be greater or equals to another field value. This rule is for Numbers comparision.</p>
+
+<p><b>hash:algo</b><br/>
+The field under validation must be a valid hash as per provided seed.<br/>
+
+Example: {'required|hash:md5'}<br/>
+ 
+Supported algorithms: md4, md5, sha1, sha256, sha384, sha512, ripemd128, ripemd160, tiger128, tiger160, tiger192, crc32, crc32b.
+</p>
+
+<p><b>hex</b><br/>
+The field under validation must be valid hex.</p>
+
+<p><b>hexColor</b><br/>
+The field under validation must be valid hex color code.</p>
+
+<p><b>in:a,b...n</b><br/>
+The field under validation must exist in the given list of values.<br/>
+
+Example: {status:'required|in:active,inactive,blocked'});</p>
+
+<p><b>integer</b><br/>
+The field under validation must be an integer.</p>
+
+<p><b>ip</b><br/>
+The field under validation must be an IP address.</p>
+
+<p><b>iso8601</b><br/>
+The field under validation must be valid Iso8601 date.
+
+json The field under validation must be a valid JSON string.</p>
+
+<p><b>length:max</b><br/>
+<b>length:max,min</b><br/>
+
+The field under validation must be less then or equals to max seed provided in rule. In case of min,max seed, field under validation must be less or equals to max seed and less then min seed. Can only be used with strings|arrays or any other object that supports length (str.length) property.</p>
+
+<p><b>latLong</b><br/>
+The field under validation must be a valid latitude-longitude coordinate.</p>
+
+<p><b>lengthBetween:min,max</b><br/>
+The field under validation value length must be between provided values.<br/>
+Example : {age:'required|between:17,30'}
+</p>
+
+<p><b>lt:another_field</b><br/>
+The field under validation must be less then another field value. This rule is for Numbers comparision.</p>
+
+<p><b>lte:another_field</b><br/>
+The field under validation must be less or equals to another field value. This rule is for Numbers comparision.</p>
+
+<p><b>macAddress</b><br/>
+The field under validation should be a valid Mac Address.<br/>
+Example { id: 'required|macAddress' } </p>
+
+<p><b>max</b><br/>
+The field under validation must be less than given value.<br/>
+
+Example: {age:'required|max:35'} </p>
+
+<p><b>maxLength</b><br/>
+The length of field under validation should be less than given value.<br/>
+
+Example: {username:'required|max:10'}</p>
+
+<p><b>mime</b><br/>
+The file under validation must have a MIME type corresponding to one of the listed extensions.</p>
+
+<p><b>min </b><br/>
+    The field under validation must be greater than given value.<br/>
+
+Example:  {age:'required|min:21'};</p>
+
+<p><b>minLength</b><br/>
+The length of field under validation should be greater than given value.<br/>
+
+Example: {username:'required|max:10|min:5'}</p>
+
+<p><b>mongoId</b><br/>
+The field under validation should be a valid MongoDB ID.<br/>
+
+Example: {id:'required|mongoId'} </p>
+
+<p><b>notContains:value</b><br/>
+The field under validation may not contains provided seeds.</p>
+
+<p><b>notIn</b><br/>
+The field under validation must not exist in the given list of values.<br/>
+
+Example: {status:'required|notIn:inactive,blocked'}</p>
+
+<p><b>nullable</b><br/>
+The field under validation is required only is not left empty.</p>
+
+<p><b>numeric</b><br/>
+The field under validation must be numeric.</p>
+
+<p><b>phoneNumber</b><br/>
+The field under validation must be a valid phone number.</p>
+
+<p><b>regex</b><br/>
+The field under validation must match the given regular expression.<br/>
+
+Note: Currently regex rules break on using colon (:) or pipe delimiters. Use array of rules style declaration instead of string.</p>
+
+<p><b>same</b><br/>
+The given field must match the field under validation.<br/>
+
+Example:  {password:'required|same:confirm_password'}</p>
+
+<p><b>size:max size:max,min</b><br/>
+The file field under validation must have a file size matching the given maximum value or should be between size range. Supported unit sufix: b,kb/k,mb/m,gb/g.</br>
+
+in below case, image file size should be under 4kb limit<br/>
+Example:  {image:'required|size:4kb'} <br/>
+
+in below case, image file size should be between 1kb - 4kb<br/>
+Example: {image:'required|size:4kb,1kb'}; <br/>
+Example: {video:'required|size:10mb'} </p>
+
+<p><b>sometimes</b><br/>
+The field under validation is required if present.</p>
+
+<p><b>string</b><br/>
+The field under validation must be string.</p>
+
+<p><b>url</b><br/>
+The field under validation must be a valid URL.</p>
+
+</script>
