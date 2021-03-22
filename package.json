@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://bitbucket.org/rgobbo/node-red-contrib-validator"
+    "url": "https://github.com/rgobbo/node-red-contrib-validator"
   },
   "keywords": [
     "node-red",
@@ -23,7 +23,7 @@
   },
   "author": "Ricardo Gobbo",
   "license": "MIT",
-  "homepage": "https://bitbucket.org/rgobbo/node-red-contrib-validator#readme",
+  "homepage": "https://github.com/rgobbo/node-red-contrib-validator#readme",
   "dependencies": {
     "node-input-validator": "^3.5.0"
   }
